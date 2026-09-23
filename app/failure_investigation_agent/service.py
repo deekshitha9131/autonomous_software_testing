@@ -27,6 +27,7 @@ class FailureInvestigationAgent:
         stderr: Optional[str] = None,
         screenshot_path: Optional[str] = None,
         execution_metadata: Optional[Dict[str, Any]] = None,
+        retrieved_knowledge: Optional[List[Dict[str, Any]]] = None,
     ) -> FailureAnalysis:
         """Investigate a test failure and return a structured analysis.
 
@@ -39,6 +40,7 @@ class FailureInvestigationAgent:
             stderr: Standard error from the test execution (if any).
             screenshot_path: Path to screenshot taken on failure (if any).
             execution_metadata: Additional metadata (e.g., execution duration).
+            retrieved_knowledge: List of knowledge chunks retrieved from KnowledgeRetriever.
 
         Returns:
             A FailureAnalysis instance with the investigation results.
@@ -51,6 +53,20 @@ class FailureInvestigationAgent:
 
         # Format exception for the prompt
         exception_str = json.dumps(exception, indent=2)
+
+        # Build knowledge section if provided
+        knowledge_section = ""
+        if retrieved_knowledge:
+            knowledge_entries = []
+            for k in retrieved_knowledge:
+                kid = k.get("id", "unknown")
+                kcontent = k.get("content", "")
+                knowledge_entries.append(f"Source: {kid}\nContent: {kcontent}")
+            knowledge_section = f"""## Retrieved Knowledge:
+
+{chr(10).join(knowledge_entries)}
+
+"""
 
         # Build the prompt
         prompt = f"""
@@ -82,7 +98,7 @@ You are an expert software test engineer and failure analyst. Analyze the follow
 ## Execution Metadata:
 {json.dumps(execution_metadata, indent=2) if execution_metadata else "(none)"}
 
-Based on the above information, provide a failure analysis in the following JSON format:
+{knowledge_section}Based on the above information, provide a failure analysis in the following JSON format:
 {{
   "failure_summary": "Brief summary of what failed",
   "probable_root_cause": "Most likely root cause based on the evidence",

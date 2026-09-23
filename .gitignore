@@ -49,3 +49,7 @@ tmp/
 reports/
 generated_tests/
 models/
+
+# Local workflow/test artifacts
+data/
+test_results/

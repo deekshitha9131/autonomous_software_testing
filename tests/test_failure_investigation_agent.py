@@ -1,4 +1,5 @@
 import pytest
+import os
 from unittest.mock import Mock, patch
 
 from app.failure_investigation_agent.service import FailureInvestigationAgent
@@ -20,12 +21,14 @@ def test_agent_init_with_client():
     agent = FailureInvestigationAgent(llm_client=mock_client)
     assert agent.llm_client == mock_client
 
-@patch("app.llm.client.OpenAIClient")
-def test_investigate_success(mock_openai_client):
+@patch("langchain_openai.ChatOpenAI.with_structured_output")
+def test_investigate_success(mock_with_structured_output):
     """Test successful failure investigation."""
+    os.environ["OPENAI_API_KEY"] = "dummy-test-key"
     # Setup mock for the LLM client to return a FailureAnalysis instance
-    mock_instance = Mock()
-    mock_instance.generate_structured.return_value = FailureAnalysis(
+    mock_invoke = Mock()
+    mock_with_structured_output.return_value.invoke = mock_invoke
+    mock_invoke.return_value = FailureAnalysis(
         failure_summary="Test failed due to timeout",
         probable_root_cause="Element took too long to load",
         evidence=["Exception: TimeoutException", "Screenshot shows loading spinner"],
@@ -33,7 +36,6 @@ def test_investigate_success(mock_openai_client):
         suggested_owner="frontend-team",
         confidence=0.8,
     )
-    mock_openai_client.return_value = mock_instance
 
     agent = FailureInvestigationAgent()
     result = agent.investigate(
@@ -54,16 +56,17 @@ def test_investigate_success(mock_openai_client):
     assert result.severity == "medium"
     assert result.suggested_owner == "frontend-team"
     assert result.confidence == 0.8
-    mock_openai_client.return_value.generate_structured.assert_called_once()
+    mock_invoke.assert_called_once()
 
-@patch("app.llm.client.OpenAIClient")
-def test_investigate_retry_then_success(mock_openai_client):
+@patch("langchain_openai.ChatOpenAI.with_structured_output")
+def test_investigate_retry_then_success(mock_with_structured_output):
     """Test that the agent retries on validation error and then succeeds."""
+    os.environ["OPENAI_API_KEY"] = "dummy-test-key"
     from pydantic import ValidationError
 
+    mock_invoke = Mock()
     # First call raises ValidationError, second returns valid
-    mock_instance = Mock()
-    mock_instance.generate_structured.side_effect = [
+    mock_invoke.side_effect = [
         ValidationError.from_exception_data(
             "FailureAnalysis",
             [
@@ -84,7 +87,7 @@ def test_investigate_retry_then_success(mock_openai_client):
             confidence=0.1,
         ),
     ]
-    mock_openai_client.return_value = mock_instance
+    mock_with_structured_output.return_value.invoke = mock_invoke
 
     agent = FailureInvestigationAgent()
     result = agent.investigate(
@@ -95,15 +98,16 @@ def test_investigate_retry_then_success(mock_openai_client):
     )
 
     assert result.failure_summary == "Test failed"
-    assert mock_openai_client.return_value.generate_structured.call_count == 2
+    assert mock_invoke.call_count == 2
 
-@patch("app.llm.client.OpenAIClient")
-def test_investigate_max_retries_exceeded(mock_openai_client):
+@patch("langchain_openai.ChatOpenAI.with_structured_output")
+def test_investigate_max_retries_exceeded(mock_with_structured_output):
     """Test that the agent raises an error after max retries."""
+    os.environ["OPENAI_API_KEY"] = "dummy-test-key"
     from pydantic import ValidationError
 
-    mock_instance = Mock()
-    mock_instance.generate_structured.side_effect = ValidationError.from_exception_data(
+    mock_invoke = Mock()
+    mock_invoke.side_effect = ValidationError.from_exception_data(
         "FailureAnalysis",
         [
             {
@@ -114,7 +118,7 @@ def test_investigate_max_retries_exceeded(mock_openai_client):
             }
         ],
     )
-    mock_openai_client.return_value = mock_instance
+    mock_with_structured_output.return_value.invoke = mock_invoke
 
     agent = FailureInvestigationAgent()
     with pytest.raises(ValueError, match="Failed to generate valid response after 3 attempts"):
@@ -125,4 +129,4 @@ def test_investigate_max_retries_exceeded(mock_openai_client):
             exception={"type": "TestException", "message": "test", "traceback": ""},
         )
 
-    assert mock_openai_client.return_value.generate_structured.call_count == 3
+    assert mock_invoke.call_count == 3

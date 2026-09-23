@@ -31,13 +31,12 @@ class OpenAIClient(LLMClient):
             model: The model to use for generation.
         """
         import os
-        from openai import OpenAI
+        from langchain_openai import ChatOpenAI
 
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key must be provided or set in OPENAI_API_KEY environment variable.")
-        self.client = OpenAI(api_key=self.api_key)
-        self.model = model
+        self.model = ChatOpenAI(model=model, openai_api_key=self.api_key)
 
     def generate_structured(self, prompt: str, schema: Type[T]) -> T:
         """Generate a structured response from OpenAI with retries on validation failure."""
@@ -46,13 +45,9 @@ class OpenAIClient(LLMClient):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                completion = self.client.beta.chat.completions.parse(
-                    model=self.model,
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format=schema,
-                )
-                # The parsed response is an instance of the schema
-                return completion.choices[0].message.parsed
+                # Use LangChain's structured output
+                runnable = self.model.with_structured_output(schema)
+                return runnable.invoke(prompt)
             except ValidationError as e:
                 if attempt == max_retries - 1:
                     raise ValueError(f"Failed to generate valid response after {max_retries} attempts: {e}")
