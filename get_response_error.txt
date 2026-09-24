@@ -1,0 +1,6 @@
+﻿Invoke-RestMethod : {"detail":"Not Found"}
+At line:37 char:20
++ ... tResponse = Invoke-RestMethod -Uri "http://localhost:8000/" -Method G ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-RestMethod], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeRestMethodCommand

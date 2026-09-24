@@ -42,12 +42,15 @@ from .state import WorkflowState
 
 def generate_test_case(state: WorkflowState) -> Dict[str, Any]:
     """Node 1: Convert requirement -> structured TestCase via LLM."""
+    print("generate_test_case: start")
     try:
         llm_client = _get_llm_client()
         generator = RequirementToTestCaseGenerator(llm_client=llm_client)
         test_case: TestCase = generator.generate(state.requirement)
+        print("generate_test_case: returning test_case")
         return {"test_case": test_case.model_dump()}
     except Exception as exc:
+        print("generate_test_case: exception:", exc)
         return {"errors": (state.errors or []) + [f"generate_test_case: {exc}"]}
 
 
@@ -68,11 +71,77 @@ def generate_selenium_test(state: WorkflowState) -> Dict[str, Any]:
         return {"errors": (state.errors or []) + [f"generate_selenium_test: {exc}"]}
 
 
+def _start_sut():
+    """Start the demo SUT as a subprocess and wait until it accepts connections."""
+    import subprocess
+    import socket
+    import time as _time
+
+    sut_url = os.getenv("TEST_APP_URL", "http://127.0.0.1:8001")
+    # Parse host and port from the URL
+    from urllib.parse import urlparse
+    parsed = urlparse(sut_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 8001
+
+    # Check if the SUT is already running
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1)
+        sock.connect((host, port))
+        sock.close()
+        return None  # SUT already running, nothing to manage
+    except (ConnectionRefusedError, OSError):
+        sock.close()
+
+    # Start the demo app
+    demo_app_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "demo_app")
+    demo_app_dir = os.path.normpath(demo_app_dir)
+    proc = subprocess.Popen(
+        ["python", "-m", "uvicorn", "main:app", "--host", host, "--port", str(port)],
+        cwd=demo_app_dir,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    # Wait for the server to be ready (up to 15 seconds)
+    deadline = _time.time() + 15
+    while _time.time() < deadline:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            s.connect((host, port))
+            s.close()
+            return proc
+        except (ConnectionRefusedError, OSError):
+            _time.sleep(0.5)
+
+    # If we get here, the server didn't start in time – return the proc anyway
+    # so the caller can clean it up; execution will likely fail.
+    return proc
+
+
+def _stop_sut(proc):
+    """Terminate the SUT subprocess if we started it."""
+    if proc is None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        proc.kill()
+
+
 def execute_test(state: WorkflowState) -> Dict[str, Any]:
     """Node 3: Execute the generated Selenium test via ExecutionService."""
     if state.generated_test_path is None:
         return {"errors": (state.errors or []) + ["execute_test: no generated_test_path in state"]}
+
+    sut_proc = None
     try:
+        # Ensure the SUT is running before Selenium tries to connect
+        sut_proc = _start_sut()
+
         file_path = state.generated_test_path
         # Dynamically import the generated test module
         module_name = file_path.replace("/", ".").replace("\\", ".").removesuffix(".py")
@@ -95,7 +164,7 @@ def execute_test(state: WorkflowState) -> Dict[str, Any]:
         with ExecutionService() as service:
             result = service.execute_test(test_func)
 
-        return {"execution_result": result}
+        return {"execution_result": result, "requirement": state.requirement}
     except Exception as exc:
         return {
             "errors": (state.errors or []) + [f"execute_test: {exc}"],
@@ -109,7 +178,10 @@ def execute_test(state: WorkflowState) -> Dict[str, Any]:
                 "duration": 0,
                 "screenshot": None,
             },
+            "requirement": state.requirement,
         }
+    finally:
+        _stop_sut(sut_proc)
 
 
 def investigate_failure(state: WorkflowState) -> Dict[str, Any]:
@@ -258,9 +330,11 @@ def _get_llm_client() -> LLMClient:
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         from app.llm.client import OpenAIClient
+        print(f"Using LLM client: OpenAIClient (API key set)")
         return OpenAIClient(api_key=api_key)
     else:
         from app.workflow.sut_llm_client import SUTAwareLLMClient
+        print("Using LLM client: SUTAwareLLMClient (no API key)")
         return SUTAwareLLMClient()
 
 

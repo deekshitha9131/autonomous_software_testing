@@ -3,9 +3,10 @@
 Usage:
     python -m app.workflow.run
 
-Requires the SUT to be running at http://127.0.0.1:8000
+Requires the SUT to be running at the TEST_APP_URL (default http://127.0.0.1:8001)
 """
 import json
+import os
 import sys
 
 from app.workflow.graph import build_workflow
@@ -18,7 +19,8 @@ def main():
     print("LangGraph Testing Workflow")
     print("=" * 70)
     print(f"Requirement : {requirement}")
-    print(f"SUT         : http://127.0.0.1:8000/login")
+    _sut_url = os.getenv("TEST_APP_URL", "http://127.0.0.1:8001")
+    print(f"SUT         : {_sut_url}/login")
     print("-" * 70)
 
     workflow = build_workflow()

@@ -1,0 +1,40 @@
+C:\Users\DEEKSHITHA\AppData\Local\Programs\Python\Python311\Lib\site-packages\pytest_asyncio\plugin.py:208: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-8.2.0, pluggy-1.6.0 -- C:\Users\DEEKSHITHA\AppData\Local\Programs\Python\Python311\python.exe
+cachedir: .pytest_cache
+rootdir: D:\major project
+configfile: pytest.ini
+plugins: anyio-4.15.1, Faker-37.6.0, langsmith-0.10.0, asyncio-0.24.0, cov-5.0.0
+asyncio: mode=Mode.STRICT, default_loop_scope=None
+collecting ... collected 1 item
+
+tests/test_api_workflow.py::test_automation_test_run_valid_token FAILED  [100%]
+
+================================== FAILURES ===================================
+____________________ test_automation_test_run_valid_token _____________________
+tests\test_api_workflow.py:103: in test_automation_test_run_valid_token
+    assert response.status_code == 200
+E   assert 500 == 200
+E    +  where 500 = <Response [500 Internal Server Error]>.status_code
+---------------------------- Captured stdout call -----------------------------
+Entering test_automation_test_run_valid_token
+Entering run_automation_test
+Exception in run_automation_test: (sqlite3.OperationalError) no such table: workflow_runs
+[SQL: INSERT INTO workflow_runs (id, requirement, status, workflow_state) VALUES (?, ?, ?, ?) RETURNING created_at, updated_at]
+[parameters: ('d2045bfb-623a-4919-8776-16455def53b9', 'test', 'pass', {'requirement': 'test', 'errors': [], 'execution_result': {'status': 'pass'}, 'test_case': {'test_id': 'TC1'}, 'generated_test_path': '/fake/path.py', 'failure_analysis': None})]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+Response status: 500
+Response body: {'detail': "(sqlite3.OperationalError) no such table: workflow_runs\n[SQL: INSERT INTO workflow_runs (id, requirement, status, workflow_state) VALUES (?, ?, ?, ?) RETURNING created_at, updated_at]\n[parameters: ('d2045bfb-623a-4919-8776-16455def53b9', 'test', 'pass', {'requirement': 'test', 'errors': [], 'execution_result': {'status': 'pass'}, 'test_case': {'test_id': 'TC1'}, 'generated_test_path': '/fake/path.py', 'failure_analysis': None})]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"}
+============================== warnings summary ===============================
+C:\Users\DEEKSHITHA\AppData\Local\Programs\Python\Python311\Lib\site-packages\starlette\testclient.py:53
+  C:\Users\DEEKSHITHA\AppData\Local\Programs\Python\Python311\Lib\site-packages\starlette\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_api_workflow.py::test_automation_test_run_valid_token - assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+======================== 1 failed, 1 warning in 2.19s =========================

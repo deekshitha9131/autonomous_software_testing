@@ -17,7 +17,7 @@ class TestAutomationAgent:
             from app.llm.client import OpenAIClient
             llm_client = OpenAIClient()
         self.llm_client = llm_client
-        self.base_url = os.getenv("TEST_APP_URL", "http://localhost:8000")
+        self.base_url = os.getenv("TEST_APP_URL", "http://127.0.0.1:8001")
         self.generated_tests_dir = "generated_tests"
         os.makedirs(self.generated_tests_dir, exist_ok=True)
 
@@ -63,8 +63,6 @@ class TestAutomationAgent:
 
         # Add a docstring with the test case title and description
         lines.append(f'    """{test_case.title}\\n{test_case.description}"""')
-        lines.append("")  # blank line after docstring
-        lines.append(f'    driver.get(\"{self.base_url}\")')
         lines.append("")
 
         # Convert each step to Selenium commands

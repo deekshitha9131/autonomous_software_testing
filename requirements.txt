@@ -10,3 +10,4 @@ langgraph>=0.0.13
 langchain-openai>=0.1.0
 sqlalchemy>=2.0.0
 psycopg[binary]>=3.0.0
+alembic>=1.13.0

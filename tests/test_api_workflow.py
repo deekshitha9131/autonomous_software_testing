@@ -1,12 +1,13 @@
 import os
 from unittest.mock import patch
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from main import app
+from app.api.v1.workflow import router as workflow_router
+from app.api.v1.automation import router as automation_router
 
-# If using SQLite for testing, create tables
-if os.getenv("DATABASE_URL", "").startswith("sqlite"):
-    from app.core.database import Base, engine
-    Base.metadata.create_all(bind=engine)
+app = FastAPI()
+app.include_router(workflow_router, prefix="/api/v1/workflow")
+app.include_router(automation_router, prefix="/api/v1/automation")
 
 client = TestClient(app)
 
@@ -159,11 +160,6 @@ def test_automation_test_approve_valid_token_approved_true():
             )
             assert response.status_code == 200
             data = response.json()
-            # Debug: get the run from the store to see the workflow state
-            from app.persistence.workflow_store import WorkflowRunStore
-            store = WorkflowRunStore()
-            debug_run = store.get_run(run_id)
-            print(f"Debug workflow state: {debug_run['workflow_state'] if debug_run else 'None'}")
             assert data["message"] == "Approval recorded"
             assert data["approved"] == True
             assert data["run_id"] == run_id
@@ -219,11 +215,6 @@ def test_automation_test_approve_valid_token_approved_false():
             )
             assert response.status_code == 200
             data = response.json()
-            # Debug: get the run from the store to see the workflow state
-            from app.persistence.workflow_store import WorkflowRunStore
-            store = WorkflowRunStore()
-            debug_run = store.get_run(run_id)
-            print(f"Debug workflow state: {debug_run['workflow_state'] if debug_run else 'None'}")
             assert data["message"] == "Approval recorded"
             assert data["approved"] == False
             assert data["run_id"] == run_id

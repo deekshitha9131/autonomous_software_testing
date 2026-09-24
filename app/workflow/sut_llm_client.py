@@ -17,7 +17,7 @@ from app.llm.client import LLMClient
 T = TypeVar("T", bound=BaseModel)
 
 # SUT configuration (read from env or use defaults matching demo_app)
-SUT_BASE_URL = os.getenv("TEST_APP_URL", "http://127.0.0.1:8000")
+SUT_BASE_URL = os.getenv("TEST_APP_URL", "http://127.0.0.1:8001")
 SUT_USERNAME = os.getenv("DEMO_APP_USERNAME", "testuser")
 SUT_PASSWORD = os.getenv("DEMO_APP_PASSWORD", "securepass")
 
@@ -131,6 +131,7 @@ class SUTAwareLLMClient(LLMClient):
 
     def _failure_analysis(self, prompt: str) -> dict:
         """Build a deterministic FailureAnalysis from the investigation prompt."""
+        print("SUTAwareLLMClient._failure_analysis called")
         prompt_lower = prompt.lower()
 
         # Extract clues from the prompt
@@ -147,10 +148,11 @@ class SUTAwareLLMClient(LLMClient):
             evidence.append("Test execution failed with an exception")
 
         return {
-            "failure_summary": "Login with valid credentials did not redirect to the dashboard",
+            "failure_summary": "Login with valid credentials failed: expected dashboard page not found",
             "probable_root_cause": (
-                "The POST /login endpoint redirects to an incorrect URL after successful "
-                "authentication. The user ends up back on the login page instead of /dashboard."
+                "The login attempt failed because the provided credentials were incorrect, "
+                "causing the user to stay on the login page. The assertion expected the dashboard title "
+                "but found the login page title."
             ),
             "evidence": evidence,
             "severity": "high",

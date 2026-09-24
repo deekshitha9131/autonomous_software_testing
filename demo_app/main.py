@@ -55,4 +55,9 @@ async def logout(response: Response):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    from urllib.parse import urlparse as _urlparse
+    _sut_url = os.getenv("TEST_APP_URL", "http://127.0.0.1:8001")
+    _parsed = _urlparse(_sut_url)
+    _host = _parsed.hostname or "0.0.0.0"
+    _port = _parsed.port or 8001
+    uvicorn.run(app, host=_host, port=_port)
