@@ -8,7 +8,7 @@ It implements the same LLMClient interface used by all agents.
 """
 import json
 import os
-from typing import Type, TypeVar
+from typing import Optional, Type, TypeVar
 
 from pydantic import BaseModel
 
@@ -36,7 +36,7 @@ class SUTAwareLLMClient(LLMClient):
 
         # --- RequirementToTestCaseGenerator asks for a TestCase ---
         if schema_name == "TestCase":
-            return schema.model_validate(self._login_test_case())
+            return schema.model_validate(self._login_test_case(prompt))
 
         # --- TestAutomationAgent asks for a CodeLine (step → selenium) ---
         if schema_name == "CodeLine":
@@ -67,8 +67,32 @@ class SUTAwareLLMClient(LLMClient):
     # Pre-built responses
     # ------------------------------------------------------------------
 
-    def _login_test_case(self) -> dict:
-        """Return a TestCase dict for the login requirement."""
+    def _login_test_case(self, prompt: str) -> dict:
+        """Return a TestCase dict based on the requirement in the prompt."""
+        requirement = self._extract_requirement(prompt)
+        if requirement is None:
+            # Fallback to the hardcoded login test case
+            return self._hardcoded_login_test_case()
+        return self._generate_test_case_from_requirement(requirement)
+
+    def _extract_requirement(self, prompt: str) -> Optional[str]:
+        """Extract the requirement from the prompt.
+        The prompt is expected to have a line that starts with "Requirement:" and then the requirement on the next line.
+        """
+        lines = prompt.split('\n')
+        for i, line in enumerate(lines):
+            if line.strip() == "Requirement:":
+                # The requirement is the next line
+                if i+1 < len(lines):
+                    req = lines[i+1].strip()
+                    # Remove any trailing instructions (like "Generate a JSON object...")
+                    if "Generate a JSON object" in req:
+                        req = req.split("Generate a JSON object")[0].strip()
+                    return req
+        return None
+
+    def _hardcoded_login_test_case(self) -> dict:
+        """Return a TestCase dict for the login requirement (hardcoded fallback)."""
         return {
             "test_id": "login_valid_credentials",
             "title": "Login with valid credentials",
@@ -85,6 +109,58 @@ class SUTAwareLLMClient(LLMClient):
                 "Wait for the page to redirect to the dashboard",
             ],
             "expected_result": "The user is redirected to the dashboard page with title 'Dashboard'",
+            "test_type": "functional",
+            "priority": "critical",
+        }
+
+    def _generate_test_case_from_requirement(self, requirement: str) -> dict:
+        """Generate a TestCase dict from the requirement."""
+        import re
+        # Try to extract an expected title from the requirement
+        title_match = re.search(r"title\s*['\"]([^'\"]+)['\"]", requirement, re.IGNORECASE)
+        expected_title = title_match.group(1) if title_match else None
+
+        # Generate a test_id from the requirement (first three words, lowercased, joined by underscores)
+        words = requirement.lower().split()
+        test_id = "_".join(words[:3]) if len(words) >= 3 else "login_test_case"
+        if not test_id:
+            test_id = "login_test_case"
+
+        # Preconditions: same as hardcoded
+        preconditions = [
+            f"The SUT is running at {SUT_BASE_URL}",
+            f"Valid credentials exist: username='{SUT_USERNAME}', password='{SUT_PASSWORD}'",
+        ]
+
+        # Steps: login steps and then a step to check the title (if we have an expected title) or just wait for page load
+        steps = [
+            f"Navigate to {SUT_BASE_URL}/login",
+            f"Enter '{SUT_USERNAME}' into the username field (id='username')",
+            f"Enter '{SUT_PASSWORD}' into the password field (id='password')",
+            "Click the login button (id='login_button')",
+            "Wait for the page to redirect",
+        ]
+        if expected_title:
+            steps.append(f"Assert that the page title is '{expected_title}'")
+        else:
+            steps.append("Wait for the page to load")
+
+        # Expected result: we'll use the requirement as the expected result
+        expected_result = f"The user is redirected to the page as specified in the requirement: '{requirement}'"
+
+        # Description: the requirement
+        description = requirement
+
+        # Title: a short version of the requirement for the test title
+        title = f"Login test: {requirement[:50]}" if len(requirement) > 50 else f"Login test: {requirement}"
+
+        return {
+            "test_id": test_id,
+            "title": title,
+            "description": description,
+            "preconditions": preconditions,
+            "steps": steps,
+            "expected_result": expected_result,
             "test_type": "functional",
             "priority": "critical",
         }
@@ -122,6 +198,20 @@ class SUTAwareLLMClient(LLMClient):
     def _expected_to_assertion(self, prompt: str) -> str:
         """Map an expected result to an assertion line."""
         prompt_lower = prompt.lower()
+
+        # Handle assertion about page title
+        if "assert that the page title is" in prompt_lower:
+            # Extract the title in quotes
+            import re
+            title_match = re.search(r"assert that the page title is\s*['\"]([^'\"]+)['\"]", prompt, re.IGNORECASE)
+            if title_match:
+                expected_title = title_match.group(1)
+                return f'assert "{expected_title}" in driver.title, "Expected page title to be \'{expected_title}\'"'
+            # If we can't extract, fall back to dashboard check
+            if "dashboard" in prompt_lower:
+                return 'assert "Dashboard" in driver.title, "Expected dashboard page after login"'
+            # Fallback
+            return 'assert True, "Expected result not mapped"'
 
         if "dashboard" in prompt_lower:
             return 'assert "Dashboard" in driver.title, "Expected dashboard page after login"'

@@ -14,6 +14,12 @@ class WorkflowState(BaseModel):
     """
     # Input
     requirement: str = Field(..., description="Natural language requirement to test")
+    test_scenarios: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of test scenarios generated from the requirement"
+    )
+    test_cases: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of test cases generated from the test scenarios"
+    )
 
     # After RequirementToTestCase node
     test_case: Optional[Dict[str, Any]] = Field(

@@ -36,6 +36,78 @@ from app.rag.retriever import KnowledgeRetriever
 from .state import WorkflowState
 
 
+def validate_requirement(state: WorkflowState) -> Dict[str, Any]:
+    """Node 0: Validate that the requirement is relevant to the demo login application."""
+    req = state.requirement.lower()
+    # Keywords that indicate a login-related requirement
+    login_keywords = [
+        "login",
+        "sign in",
+        "signin",
+        "log in",
+        "username",
+        "password",
+        "credentials",
+    ]
+    if not any(keyword in req for keyword in login_keywords):
+        # Return an error message
+        error_msg = (
+            "The requirement is not applicable to the current SUT (demo login application). "
+            "Please provide a requirement related to the login functionality."
+        )
+        return {"errors": (state.errors or []) + [error_msg]}
+    # If valid, return empty dict (no changes to state)
+    {}
+
+
+def route_after_validation(state: WorkflowState) -> str:
+    """Route to END if there are validation errors, otherwise to generate_test_scenarios."""
+    if state.errors:
+        return "end"
+    return "generate_test_scenarios"
+
+
+def generate_test_scenarios(state: WorkflowState) -> Dict[str, Any]:
+    """Node 1.5: Generate test scenarios for the login demo."""
+    req = state.requirement.lower()
+    # For now, we hardcode the scenarios for the login requirement.
+    # In a more advanced version, we could parse the requirement to determine
+    # which scenarios to generate, but for the demo we assume a valid login requirement.
+    scenarios = [
+        {
+            "scenario_id": "func_1",
+            "scenario_type": "functional",
+            "title": "Login with valid credentials",
+            "description": "Verify that a user can log in with valid credentials",
+        },
+        {
+            "scenario_id": "neg_1",
+            "scenario_type": "negative",
+            "title": "Login with invalid password",
+            "description": "Verify that a user sees an error message when password is incorrect",
+        },
+        {
+            "scenario_id": "neg_2",
+            "scenario_type": "negative",
+            "title": "Login with invalid username",
+            "description": "Verify that a user sees an error message when username is incorrect",
+        },
+        {
+            "scenario_id": "bound_1",
+            "scenario_type": "boundary",
+            "title": "Empty username",
+            "description": "Verify that the system handles empty username input",
+        },
+        {
+            "scenario_id": "bound_2",
+            "scenario_type": "boundary",
+            "title": "Empty password",
+            "description": "Verify that the system handles empty password input",
+        },
+    ]
+    return {"test_scenarios": scenarios, "test_cases": scenarios}
+
+
 # ---------------------------------------------------------------------------
 # Node functions - each takes the WorkflowState and returns a partial update
 # ---------------------------------------------------------------------------
@@ -346,12 +418,16 @@ def build_workflow() -> StateGraph:
     """Build and return the compiled LangGraph workflow.
 
     Flow:
-      generate_test_case -> generate_selenium_test -> execute_test
-        -> if PASS -> END
-        -> if FAIL -> investigate_failure -> verify_failure -> generate_bug_report -> generate_regression_test -> request_human_approval -> END
+      validate_requirement -> [if error -> END; else -> generate_test_scenarios]
+        -> generate_test_scenarios -> generate_test_case
+          -> generate_selenium_test -> execute_test
+            -> if PASS -> END
+            -> if FAIL -> investigate_failure -> verify_failure -> generate_bug_report -> generate_regression_test -> request_human_approval -> END
     """
     graph = StateGraph(WorkflowState)
 
+    graph.add_node("validate_requirement", validate_requirement)
+    graph.add_node("generate_test_scenarios", generate_test_scenarios)
     graph.add_node("generate_test_case", generate_test_case)
     graph.add_node("generate_selenium_test", generate_selenium_test)
     graph.add_node("execute_test", execute_test)
@@ -361,7 +437,16 @@ def build_workflow() -> StateGraph:
     graph.add_node("generate_regression_test", generate_regression_test)
     graph.add_node("request_human_approval", request_human_approval)
 
-    graph.set_entry_point("generate_test_case")
+    graph.set_entry_point("validate_requirement")
+    graph.add_conditional_edges(
+        "validate_requirement",
+        route_after_validation,
+        {
+            "end": END,
+            "generate_test_scenarios": "generate_test_scenarios",
+        },
+    )
+    graph.add_edge("generate_test_scenarios", "generate_test_case")
     graph.add_edge("generate_test_case", "generate_selenium_test")
     graph.add_edge("generate_selenium_test", "execute_test")
 
