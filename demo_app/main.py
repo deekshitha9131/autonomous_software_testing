@@ -22,7 +22,7 @@ SESSION_COOKIE_NAME = "demo_session"
 
 # Templates
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
-env = Environment(loader=FileSystemLoader(TEMPLATE_DIR))
+env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -52,6 +52,21 @@ async def logout(response: Response):
     response = RedirectResponse(url="/", status_code=302)
     response.delete_cookie(key=SESSION_COOKIE_NAME)
     return response
+
+@app.get("/hello", response_class=HTMLResponse)
+async def hello_page(request: Request):
+    template = env.get_template("hello.html")
+    return HTMLResponse(template.render(request=request))
+
+@app.post("/hello")
+async def hello_submit(request: Request, name: str = Form(default="")):
+    name = name.strip()
+    if name:
+        greeting = f"Hello, {name}!"
+    else:
+        greeting = "Hello, Stranger!"
+    template = env.get_template("hello.html")
+    return HTMLResponse(template.render(request=request, greeting=greeting))
 
 if __name__ == "__main__":
     import uvicorn

@@ -32,6 +32,15 @@ class BugReportAgent:
             "failure_analysis": failure_analysis,
             "verification_result": verification_result,
             "retrieved_knowledge": retrieved_knowledge or [],
-            "summary": "Bug report generated from test failure.",
+            "root_cause_status": (
+                "confirmed"
+                if (verification_result or {}).get("verdict") == "confirmed"
+                else "unverified"
+            ),
+            "summary": (
+                "Verified defect report."
+                if (verification_result or {}).get("verdict") == "confirmed"
+                else "Observed test failure; root cause remains unverified."
+            ),
         }
         return bug_report

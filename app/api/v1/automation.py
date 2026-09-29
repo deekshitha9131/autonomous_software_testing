@@ -1,15 +1,26 @@
 import os
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+from starlette.concurrency import run_in_threadpool
 from app.workflow.graph import build_workflow
-from app.persistence.workflow_store import WorkflowRunStore
+from app.persistence.workflow_store import WorkflowRunStore, get_execution_status
 
 router = APIRouter()
 
 EXPECTED_TOKEN = os.getenv("WORKFLOW_RUN_TOKEN")
 security = HTTPBearer()
 workflow_store = WorkflowRunStore()
+
+
+def _enrich_demo_sut_context(request: "AutomationRunRequest") -> Optional[Dict[str, Any]]:
+    context = dict(request.sut_context or {})
+    if request.sut_id == "demo-app" and context.get("route") == "/hello":
+        context.setdefault("greeting_template", "Hello, {name}!")
+        context.setdefault("empty_name_behavior", "Hello, Stranger!")
+    return context or None
+
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     if EXPECTED_TOKEN is None:
@@ -19,6 +30,16 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
 
 class AutomationRunRequest(BaseModel):
     requirement: str
+    base_url: Optional[str] = None
+    sut_id: Optional[str] = None
+    sut_context: Optional[Dict[str, Any]] = None
+    test_data: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode='after')
+    def validate_requirement(self) -> 'AutomationRunRequest':
+        if not self.requirement or not self.requirement.strip():
+            raise ValueError('requirement must not be empty or whitespace-only')
+        return self
 
 class ApprovalRequest(BaseModel):
     run_id: str
@@ -32,20 +53,29 @@ async def run_automation_test(request: AutomationRunRequest, token: str = Securi
     """
     try:
         workflow = build_workflow()
-        final_state = workflow.invoke({"requirement": request.requirement})
+        final_state = await run_in_threadpool(
+            workflow.invoke,
+            {
+                "requirement": request.requirement,
+                "base_url": request.base_url,
+                "sut_id": request.sut_id,
+                "sut_context": _enrich_demo_sut_context(request),
+                "test_data": request.test_data,
+            },
+        )
 
         errors = final_state.get("errors", [])
         execution_result = final_state.get("execution_result")
-        if errors:
+        execution_status = get_execution_status(final_state)
+        missing_context = final_state.get("missing_context") or {}
+        if missing_context.get("status") in {"unsupported", "clarification_needed"}:
+            workflow_status = missing_context["status"]
+        elif errors:
             workflow_status = "completed_with_errors"
-        elif execution_result:
-            exec_status = execution_result.get("status", "unknown")
-            if exec_status == "pass":
-                workflow_status = "pass"
-            elif exec_status == "fail":
-                workflow_status = "fail"
-            else:
-                workflow_status = f"execution_{exec_status}"
+        elif execution_status in ("pass", "fail"):
+            workflow_status = execution_status
+        elif execution_status:
+            workflow_status = f"execution_{execution_status}"
         else:
             workflow_status = "not_executed"
 
@@ -56,14 +86,27 @@ async def run_automation_test(request: AutomationRunRequest, token: str = Securi
         response = {
             "run_id": run_id,
             "requirement": final_state.get("requirement"),
+            "requirement_understanding": final_state.get("requirement_understanding"),
+            "missing_context": final_state.get("missing_context"),
+            "test_scenarios": final_state.get("test_scenarios"),
+            "test_cases": final_state.get("test_cases"),
             "test_case": final_state.get("test_case"),
+            "generated_test_codes": final_state.get("generated_test_codes"),
             "generated_test_code": final_state.get("generated_test_code"),
+            "execution_results": final_state.get("execution_results"),
+            "execution_summary": final_state.get("execution_summary"),
             "execution_result": final_state.get("execution_result"),
+            "primary_execution_result": final_state.get("primary_execution_result"),
+            "regression_execution_result": final_state.get("regression_execution_result"),
             "retrieved_knowledge": final_state.get("retrieved_knowledge"),
             "failure_analysis": final_state.get("failure_analysis"),
+            "failure_analyses": final_state.get("failure_analyses"),
             "verification_result": final_state.get("verification_result"),
+            "verification_results": final_state.get("verification_results"),
             "bug_report": final_state.get("bug_report"),
+            "bug_reports": final_state.get("bug_reports"),
             "regression_test": final_state.get("regression_test"),
+            "regression_tests": final_state.get("regression_tests"),
             "human_approval_required": final_state.get("human_approval_required"),
             "bug_report_approved": final_state.get("bug_report_approved"),
             "regression_test_approved": final_state.get("regression_test_approved"),
@@ -71,7 +114,7 @@ async def run_automation_test(request: AutomationRunRequest, token: str = Securi
             "workflow_status": workflow_status,
             "test_case_generated": final_state.get("test_case") is not None,
             "test_executed": final_state.get("generated_test_path") is not None,
-            "execution_status": execution_result.get("status") if execution_result else None,
+            "execution_status": execution_status,
             "failure_detected": final_state.get("failure_analysis") is not None,
             "errors": errors,
         }

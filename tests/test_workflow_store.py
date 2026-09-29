@@ -15,9 +15,9 @@ def store(monkeypatch):
     Base.metadata.create_all(engine)
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    # Patch get_session_local to return our test session factory
+    # Patch the session factory used by WorkflowRunStore.
     monkeypatch.setattr(
-        "app.persistence.workflow_store.get_session_local", lambda: _SessionLocal
+        "app.persistence.workflow_store.SessionLocal", _SessionLocal
     )
     return WorkflowRunStore()
 
@@ -36,6 +36,30 @@ class TestWorkflowRunStore:
         assert result["requirement"] == "Login must work"
         assert result["status"] == "passed"
         assert result["workflow_state"] == state
+
+    def test_create_run_uses_aggregate_failure_status(self, store):
+        state = {
+            "execution_result": {"status": "pass"},
+            "execution_summary": {
+                "total": 6,
+                "passed": 5,
+                "failed": 1,
+                "errors": 0,
+                "skipped": 0,
+            },
+        }
+
+        run_id = store.create_run("Requirement", state)
+
+        assert store.get_run(run_id)["status"] == "fail"
+
+    def test_create_run_records_unsupported_status(self, store):
+        run_id = store.create_run(
+            "Profile requirement",
+            {"missing_context": {"status": "unsupported"}},
+        )
+
+        assert store.get_run(run_id)["status"] == "unsupported"
 
     def test_get_run_not_found(self, store):
         assert store.get_run("nonexistent-id") is None

@@ -28,6 +28,12 @@ class FailureInvestigationAgent:
         screenshot_path: Optional[str] = None,
         execution_metadata: Optional[Dict[str, Any]] = None,
         retrieved_knowledge: Optional[List[Dict[str, Any]]] = None,
+        # New parameters for Phase 8
+        test_id: Optional[str] = None,
+        scenario_id: Optional[str] = None,
+        base_url: Optional[str] = None,
+        sut_id: Optional[str] = None,
+        sut_context: Optional[Dict[str, Any]] = None,
     ) -> FailureAnalysis:
         """Investigate a test failure and return a structured analysis.
 
@@ -41,6 +47,11 @@ class FailureInvestigationAgent:
             screenshot_path: Path to screenshot taken on failure (if any).
             execution_metadata: Additional metadata (e.g., execution duration).
             retrieved_knowledge: List of knowledge chunks retrieved from KnowledgeRetriever.
+            test_id: Identifier of the test case.
+            scenario_id: Identifier of the scenario.
+            base_url: Base URL of the System Under Test.
+            sut_id: Identifier for the System Under Test.
+            sut_context: Additional context about the System Under Test.
 
         Returns:
             A FailureAnalysis instance with the investigation results.
@@ -68,7 +79,7 @@ class FailureInvestigationAgent:
 
 """
 
-        # Build the prompt
+        # Build the prompt with clear separation of observed evidence and supporting context
         prompt = f"""
 You are an expert software test engineer and failure analyst. Analyze the following test failure and provide a structured root cause analysis.
 
@@ -83,23 +94,38 @@ You are an expert software test engineer and failure analyst. Analyze the follow
 {generated_test_code}
 ```
 
-## Exception Details:
-{exception_str}
+## Observed Evidence:
+"""
+        # Add observed evidence
+        if exception_str.strip():
+            prompt += f"### Exception Details:\n{exception_str}\n"
+        if stdout:
+            prompt += f"### Standard Output:\n{stdout}\n"
+        if stderr:
+            prompt += f"### Standard Error:\n{stderr}\n"
+        if screenshot_path:
+            prompt += f"### Screenshot Path:\n{screenshot_path}\n"
+        if execution_metadata:
+            prompt += f"### Execution Metadata:\n{json.dumps(execution_metadata, indent=2)}\n"
 
-## Standard Output:
-{stdout if stdout else "(empty)"}
+        prompt += "\n## Supporting Context:\n"
+        if retrieved_knowledge:
+            prompt += knowledge_section
+        # Add SUT context and identifiers as supporting context
+        if test_id:
+            prompt += f"### Test ID: {test_id}\n"
+        if scenario_id:
+            prompt += f"### Scenario ID: {scenario_id}\n"
+        if base_url:
+            prompt += f"### Base URL: {base_url}\n"
+        if sut_id:
+            prompt += f"### SUT ID: {sut_id}\n"
+        if sut_context:
+            prompt += f"### SUT Context: {json.dumps(sut_context, indent=2)}\n"
 
-## Standard Error:
-{stderr if stderr else "(empty)"}
-
-## Screenshot Path:
-{screenshot_path if screenshot_path else "(none)"}
-
-## Execution Metadata:
-{json.dumps(execution_metadata, indent=2) if execution_metadata else "(none)"}
-
-{knowledge_section}Based on the above information, provide a failure analysis in the following JSON format:
-{{
+        prompt += """
+Based on the above information, provide a failure analysis in the following JSON format:
+{
   "failure_summary": "Brief summary of what failed",
   "probable_root_cause": "Most likely root cause based on the evidence",
   "evidence": [
@@ -108,7 +134,7 @@ You are an expert software test engineer and failure analyst. Analyze the follow
   "severity": "one of: low, medium, high, critical",
   "suggested_owner": "Suggested team or person to investigate (e.g., 'frontend-team', 'backend-api', 'qa-engineer')",
   "confidence": 0.0  // float between 0.0 and 1.0
-}}
+}
 
 Important guidelines:
 1. Clearly distinguish evidence (facts) from inference (root cause, etc.).

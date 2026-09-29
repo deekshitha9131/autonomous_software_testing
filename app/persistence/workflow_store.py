@@ -6,6 +6,28 @@ import uuid
 from typing import Dict, Any, Optional
 
 
+def get_execution_status(workflow_state: Dict[str, Any]) -> Optional[str]:
+    """Return the aggregate execution status, falling back to the legacy result."""
+    missing_context = workflow_state.get("missing_context") or {}
+    if missing_context.get("status") in {"unsupported", "clarification_needed"}:
+        return missing_context["status"]
+
+    summary = workflow_state.get("execution_summary")
+    if summary:
+        if summary.get("failed", 0):
+            return "fail"
+        if summary.get("errors", 0):
+            return "error"
+        total = summary.get("total", 0)
+        if total and summary.get("passed", 0) == total:
+            return "pass"
+        if total and summary.get("skipped", 0) == total:
+            return "skipped"
+
+    execution_result = workflow_state.get("execution_result") or {}
+    return execution_result.get("status")
+
+
 class WorkflowRunStore:
     """PostgreSQL-based persistence for workflow runs."""
 
@@ -27,9 +49,7 @@ class WorkflowRunStore:
             The unique run ID.
         """
         run_id = str(uuid.uuid4())
-        # Determine status from workflow_state
-        execution_result = workflow_state.get("execution_result", {})
-        status = execution_result.get("status", "unknown")
+        status = get_execution_status(workflow_state) or "unknown"
 
         with self._get_session() as session:
             db_run = WorkflowRun(
@@ -74,8 +94,7 @@ class WorkflowRunStore:
         Returns:
             True if the run was updated, False if not found.
         """
-        execution_state = workflow_state.get("execution_result", {})
-        status = execution_state.get("status", "unknown")
+        status = get_execution_status(workflow_state) or "unknown"
         with self._get_session() as session:
             db_run = session.query(WorkflowRun).filter(WorkflowRun.id == run_id).first()
             if db_run is None:

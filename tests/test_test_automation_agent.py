@@ -180,3 +180,89 @@ def test_validate_code(mock_openai_client):
     # Invalid code
     with pytest.raises(SyntaxError):
         agent._validate_code("def foo(: pass")
+
+
+def test_fix_invalid_code_prompt_includes_authoritative_sut_context():
+    class RepairClient:
+        prompt = None
+
+        def generate_structured(self, prompt, schema):
+            self.prompt = prompt
+            return schema(code='assert driver.find_element(By.CSS_SELECTOR, "#greeting").text == "Hello, Stranger!"')
+
+    client = RepairClient()
+    agent = TestAutomationAgent(
+        llm_client=client,
+        base_url="http://127.0.0.1:8001",
+        sut_context={
+            "route": "/hello",
+            "name_selector": "#name",
+            "submit_selector": "#say-hello",
+            "greeting_selector": "#greeting",
+        },
+    )
+    test_case = TestCase(
+        test_id="tc_empty_name",
+        scenario_id="empty_name",
+        title="Empty name fallback",
+        description="Submit an empty name and inspect the greeting.",
+        steps=["Submit the form without a name"],
+        expected_result="Hello, Stranger! is displayed",
+        test_type="negative",
+        priority="medium",
+    )
+
+    repaired = agent._fix_invalid_code(
+        test_case,
+        "test_tc_empty_name",
+        'assert driver.find_element(By.CSS_SELECTOR, "#error").text',
+        'Selector "#error" is not grounded. Authorized selector: "#greeting".',
+    )
+
+    assert '#greeting' in client.prompt
+    assert '#error' in client.prompt
+    assert 'Use only selectors explicitly present' in client.prompt
+    assert 'VALIDATION ERROR' in client.prompt
+    assert '#greeting' in repaired
+
+
+def test_step_assertion_cannot_conflict_with_final_expected_result():
+    from pydantic import BaseModel
+
+    class CodeLine(BaseModel):
+        code: str
+
+    class AssertionLine(BaseModel):
+        assertion: str
+
+    class ConflictingAssertionClient:
+        def generate_structured(self, prompt, schema):
+            if "Convert the following test step" in prompt:
+                return schema(
+                    code='assert driver.find_element(By.CSS_SELECTOR, "#greeting").text == "Hello, <name>!"'
+                )
+            return schema(
+                assertion='assert driver.find_element(By.CSS_SELECTOR, "#greeting").text == "Hello, " + "A" * 256 + "!"'
+            )
+
+    test_case = TestCase(
+        test_id="tc_long_name",
+        scenario_id="maximum_name",
+        route="/hello",
+        title="Maximum length name",
+        description="Show all 256 name characters",
+        steps=["Verify the greeting equals Hello, <name>!"],
+        expected_result="The greeting contains all 256 submitted characters",
+        test_type="boundary",
+        priority="medium",
+    )
+    agent = TestAutomationAgent(
+        llm_client=ConflictingAssertionClient(),
+        base_url="http://127.0.0.1:8001",
+        sut_context={"route": "/hello", "greeting_selector": "#greeting"},
+    )
+
+    code = agent._generate_test_code(test_case, "test_tc_long_name")
+
+    assert '"Hello, <name>!"' not in code
+    assert '"A" * 256' in code

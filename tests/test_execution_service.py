@@ -74,3 +74,28 @@ def test_execution_service_execute_test_fail(mock_time, mock_os):
     assert result["duration"] == 1.0
     assert result["screenshot"] == "test_results/screenshot.png"
     mock_driver.save_screenshot.assert_called_once_with("test_results/screenshot.png")
+
+
+def test_execution_service_captures_assertion_and_browser_evidence():
+    mock_driver = Mock()
+    mock_driver.current_url = "http://127.0.0.1:8001/hello"
+    mock_driver.title = "Hello Page"
+    mock_driver.find_element.return_value.text = "Hello, Alice!"
+    mock_driver.execute_script.side_effect = ["<p>Hello, Alice!</p>", []]
+    service = ExecutionService(driver_func=lambda: mock_driver)
+    service.driver = mock_driver
+
+    def failing_test(driver):
+        expected = "Hello, Bob!"
+        actual = "Hello, Alice!"
+        assert actual == expected
+
+    result = service.execute_test(failing_test)
+
+    assert result["status"] == "fail"
+    assert result["browser_evidence"]["assertion_values"] == {
+        "expected": "Hello, Bob!",
+        "actual": "Hello, Alice!",
+    }
+    assert result["browser_evidence"]["visible_text"] == "Hello, Alice!"
+    assert result["browser_evidence"]["body_inner_html"] == "<p>Hello, Alice!</p>"

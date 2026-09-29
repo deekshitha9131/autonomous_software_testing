@@ -96,6 +96,64 @@ def test_automation_test_run_valid_token():
             assert "run_id" in data  # New field: run_id should be present
 
 
+def test_automation_test_run_uses_aggregate_execution_status():
+    state = {
+        "requirement": "test",
+        "errors": [],
+        "execution_result": {"status": "fail", "failed_test_ids": ["tc_fail"]},
+        "primary_execution_result": {"status": "pass", "test_id": "tc_pass"},
+        "execution_summary": {
+            "total": 2,
+            "passed": 1,
+            "failed": 1,
+            "errors": 0,
+            "skipped": 0,
+        },
+    }
+    with patch("app.api.v1.automation.EXPECTED_TOKEN", "testtoken"):
+        with patch("app.api.v1.automation.build_workflow") as mock_build:
+            mock_build.return_value.invoke.return_value = state
+            with patch(
+                "app.api.v1.automation.workflow_store.create_run",
+                return_value="run-1",
+            ):
+                response = client.post(
+                    "/api/v1/automation/test/run",
+                    json={"requirement": "test"},
+                    headers={"Authorization": "Bearer testtoken"},
+                )
+
+    assert response.status_code == 200
+    assert response.json()["workflow_status"] == "fail"
+    assert response.json()["execution_status"] == "fail"
+    assert response.json()["execution_result"]["status"] == "fail"
+    assert response.json()["primary_execution_result"]["status"] == "pass"
+
+
+def test_automation_test_run_reports_unsupported_feature():
+    state = {
+        "requirement": "Verify the profile",
+        "errors": ["Requested feature 'profile' is not implemented by this SUT."],
+        "missing_context": {"status": "unsupported", "feature": "profile"},
+    }
+    with patch("app.api.v1.automation.EXPECTED_TOKEN", "testtoken"):
+        with patch("app.api.v1.automation.build_workflow") as mock_build:
+            mock_build.return_value.invoke.return_value = state
+            with patch(
+                "app.api.v1.automation.workflow_store.create_run",
+                return_value="run-unsupported",
+            ):
+                response = client.post(
+                    "/api/v1/automation/test/run",
+                    json={"requirement": "Verify the profile"},
+                    headers={"Authorization": "Bearer testtoken"},
+                )
+
+    assert response.status_code == 200
+    assert response.json()["workflow_status"] == "unsupported"
+    assert response.json()["test_case_generated"] is False
+
+
 def test_automation_test_approve_missing_token():
     response = client.post("/api/v1/automation/test/approve", json={"run_id": "dummy", "approved": True})
     assert response.status_code == 401

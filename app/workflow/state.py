@@ -14,6 +14,22 @@ class WorkflowState(BaseModel):
     """
     # Input
     requirement: str = Field(..., description="Natural language requirement to test")
+    base_url: Optional[str] = Field(
+        default=None, description="Base URL of the System Under Test"
+    )
+    sut_id: Optional[str] = Field(
+        default=None, description="Identifier for the System Under Test"
+    )
+    sut_context: Optional[Dict[str, Any]] = Field(
+        default=None, description="Additional context about the System Under Test"
+    )
+    test_data: Optional[Dict[str, Any]] = Field(
+        default=None, description="Test data to be used during test execution"
+    )
+    # Requirement Understanding
+    requirement_understanding: Optional[Dict[str, Any]] = Field(
+        default=None, description="Structured understanding of the requirement"
+    )
     test_scenarios: Optional[List[Dict[str, Any]]] = Field(
         default=None, description="List of test scenarios generated from the requirement"
     )
@@ -36,17 +52,43 @@ class WorkflowState(BaseModel):
 
     # After ExecutionService node
     execution_result: Optional[Dict[str, Any]] = Field(
-        default=None, description="Execution result dict (status, duration, exception, ...)",
+        default=None, description="Aggregate execution result for all generated tests",
+    )
+    primary_execution_result: Optional[Dict[str, Any]] = Field(
+        default=None, description="First individual execution result for compatibility",
+    )
+
+    # Individual execution results for all generated Selenium tests
+    execution_results: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of execution result dicts for each generated test"
+    )
+
+    # Aggregate execution summary
+    execution_summary: Optional[Dict[str, Any]] = Field(
+        default=None, description="Aggregate summary of execution results (total, passed, failed)"
+    )
+
+    # Generated Selenium code for all test cases (only populated after generating Selenium for test cases)
+    generated_test_codes: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of generated Selenium test code dicts (test_id and code)"
     )
 
     # After FailureInvestigationAgent node (only populated on test failure)
     failure_analysis: Optional[Dict[str, Any]] = Field(
-        default=None, description="Failure analysis from FailureInvestigationAgent (FailureAnalysis as dict)",
+        default=None, description="Failure analysis from FailureInvestigationAgent (FailureAnalysis as dict)"
+    )
+    # Per-test failure analyses
+    failure_analyses: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of failure analyses for each failed/error test"
     )
 
     # After VerificationAgent node (only populated on test failure)
     verification_result: Optional[Dict[str, Any]] = Field(
-        default=None, description="Verification result from VerificationAgent (VerificationResult as dict)",
+        default=None, description="Verification result from VerificationAgent (VerificationResult as dict)"
+    )
+    # Per-test verification results
+    verification_results: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of verification results for each failure analysis"
     )
 
     # After BugReportAgent node (only populated on test failure)
@@ -56,7 +98,11 @@ class WorkflowState(BaseModel):
 
     # After RegressionTestAgent node (only populated on test failure)
     regression_test: Optional[Dict[str, Any]] = Field(
-        default=None, description="Generated regression test from RegressionTestAgent (RegressionTestCase as dict)",
+        default=None, description="Generated regression test from RegressionTestAgent (RegressionTestCase as dict)"
+    )
+    # After regression test execution (only populated after executing approved regression test)
+    regression_execution_result: Optional[Dict[str, Any]] = Field(
+        default=None, description="Execution result of the approved regression test"
     )
 
     # Human-in-the-Loop approval fields (only populated on test failure)
@@ -77,3 +123,17 @@ class WorkflowState(BaseModel):
 
     # Errors captured at any stage
     errors: List[str] = Field(default_factory=list, description="Errors encountered during workflow")
+
+    # Missing context flag (for Phase 6)
+    missing_context: Optional[Dict[str, Any]] = Field(
+        default=None, description="Structured missing context result when SUT context is insufficient"
+    )
+
+    # Per-failure bug reports (for Phase 9)
+    bug_reports: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of generated bug reports"
+    )
+    # Per-failure regression tests (for Phase 9)
+    regression_tests: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="List of generated regression test cases"
+    )

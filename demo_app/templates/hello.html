@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hello Page</title>
+</head>
+<body>
+    <h2>Hello Page</h2>
+    <form method="post" action="/hello">
+        <label for="name">Name:</label><br>
+        <input type="text" id="name" name="name"><br><br>
+        <button type="submit" id="say-hello">Say Hello</button>
+    </form>
+    {% if greeting is defined %}
+    <p id="greeting">{{ greeting }}</p>
+    {% endif %}
+</body>
+</html>
